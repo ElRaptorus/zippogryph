@@ -65,7 +65,12 @@ npx zippogryph --silent foo.zip /path/to/target/dir
 | `strip`           | `number`                   | `0`      | Number of leading path components to remove from each entry                                                                                                                                                    |
 | `noOverwrite`     | `boolean`                  | `false`  | Skip files and symlinks that already exist at the destination                                                                                                                                                  |
 
-Entries under `__MACOSX/` are skipped. Compression methods `0` (STORE) and `8` (DEFLATE) are supported. Encrypted or other methods throw. The central directory is capped at 64 MiB.
+### Things to be aware of
+
+- Entries under `__MACOSX/` are skipped
+- Compression methods `0` (STORE) and `8` (DEFLATE) are supported. May add more in the future.
+- The central directory is currently capped at 64 MiB
+- DEFLATE output is capped to the declared uncompressed size
 
 ## License
 

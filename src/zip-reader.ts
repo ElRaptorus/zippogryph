@@ -87,6 +87,35 @@ function parseZip64Extra(
   };
 }
 
+function inflateOutputExceededError(fileName: string): Error {
+  return new Error(`Inflated output exceeds declared uncompressed size for entry '${fileName}'`);
+}
+
+function capInflateOutput(inflate: Readable, maxOutputLength: number, fileName: string): Readable {
+  let bytesSeen = 0;
+  let exceeded = false;
+  const capped = new Transform({
+    transform(chunk, _encoding, callback) {
+      bytesSeen += chunk.length;
+      if (bytesSeen > maxOutputLength) {
+        exceeded = true;
+        inflate.destroy();
+        callback(inflateOutputExceededError(fileName));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+  inflate.on('error', (error) => {
+    if (exceeded) {
+      return;
+    }
+    capped.destroy(error);
+  });
+  inflate.pipe(capped);
+  return capped;
+}
+
 function wrapCrc32(stream: Readable, expectedCrc32: number): Readable {
   if (expectedCrc32 === 0) {
     return stream;
@@ -328,7 +357,13 @@ export class ZipReader {
     const extraFieldLength = localHeader.readUInt16LE(28);
     const dataStart = entry.relativeOffsetOfLocalHeader + 30 + fileNameLength + extraFieldLength;
 
+    assertSafeNonNegativeInteger(entry.uncompressedSize, 'uncompressed size');
+    assertSafeNonNegativeInteger(entry.compressedSize, 'compressed size');
+
     if (entry.compressionMethod === METHOD_STORE) {
+      if (entry.compressedSize !== entry.uncompressedSize) {
+        throw new Error(`STORE entry '${entry.fileName}' compressed size does not match uncompressed size`);
+      }
       if (entry.compressedSize === 0) {
         return wrapCrc32(Readable.from(Buffer.alloc(0)), entry.crc32);
       }
@@ -347,12 +382,13 @@ export class ZipReader {
         start: dataStart,
         end: dataStart + entry.compressedSize - 1,
       });
+      // Node's maxOutputLength only applies to zlib.inflateRaw / inflateRawSync, not streams.
       const inflate = zlib.createInflateRaw();
       compressed.on('error', (error) => {
         inflate.destroy(error);
       });
       compressed.pipe(inflate);
-      return wrapCrc32(inflate, entry.crc32);
+      return wrapCrc32(capInflateOutput(inflate, entry.uncompressedSize, entry.fileName), entry.crc32);
     }
 
     throw new Error(`Unsupported compression method ${entry.compressionMethod} for entry '${entry.fileName}'`);

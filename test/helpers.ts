@@ -21,6 +21,7 @@ export interface ZipBuilderEntry {
   utf8?: boolean;
   externalFileAttributes?: number;
   versionMadeBy?: number;
+  declaredUncompressedSize?: number;
 }
 
 export const UNIX_FILE_ATTRIBUTES = (0o100644 << 16) >>> 0;
@@ -38,6 +39,7 @@ export async function writeZipArchive(destinationPath: string, files: ZipBuilder
     const method = file.method ?? 0;
     const compressed = method === 8 ? deflateRawSync(uncompressed) : uncompressed;
     const checksum = crc32(uncompressed) >>> 0;
+    const uncompressedSize = file.declaredUncompressedSize ?? uncompressed.length;
     const flags = file.utf8 ? 0x0800 : 0;
     const nameBuffer = Buffer.from(file.name, file.utf8 ? 'utf8' : 'latin1');
     const versionMadeBy = file.versionMadeBy ?? UNIX_VERSION_MADE_BY;
@@ -50,7 +52,7 @@ export async function writeZipArchive(destinationPath: string, files: ZipBuilder
     localHeader.writeUInt16LE(method, 8);
     localHeader.writeUInt32LE(checksum, 14);
     localHeader.writeUInt32LE(compressed.length, 18);
-    localHeader.writeUInt32LE(uncompressed.length, 22);
+    localHeader.writeUInt32LE(uncompressedSize, 22);
     localHeader.writeUInt16LE(nameBuffer.length, 26);
 
     localParts.push(localHeader, nameBuffer, compressed);
@@ -63,7 +65,7 @@ export async function writeZipArchive(destinationPath: string, files: ZipBuilder
     centralHeader.writeUInt16LE(method, 10);
     centralHeader.writeUInt32LE(checksum, 16);
     centralHeader.writeUInt32LE(compressed.length, 20);
-    centralHeader.writeUInt32LE(uncompressed.length, 24);
+    centralHeader.writeUInt32LE(uncompressedSize, 24);
     centralHeader.writeUInt16LE(nameBuffer.length, 28);
     centralHeader.writeUInt32LE(externalFileAttributes, 38);
     centralHeader.writeUInt32LE(offset, 42);

@@ -95,3 +95,48 @@ describe('central directory size cap', () => {
     await expect(openZipFile(zipPath)).rejects.toThrow(/Central directory is too large/);
   });
 });
+
+describe('inflate output cap', () => {
+  it('rejects DEFLATE output that exceeds the declared uncompressed size', async () => {
+    const directory = await makeTemporaryDirectory('inflate-overrun');
+    const zipPath = path.join(directory, 'overrun.zip');
+    await writeZipArchive(zipPath, [
+      {
+        name: 'payload.bin',
+        data: Buffer.alloc(100, 0x61),
+        method: 8,
+        declaredUncompressedSize: 10,
+      },
+    ]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(readStreamBuffer(await reader.openEntryStream(reader.entries[0]!))).rejects.toThrow(
+        /Inflated output exceeds declared uncompressed size/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+
+  it('rejects a STORE entry whose compressed size does not match uncompressed size', async () => {
+    const directory = await makeTemporaryDirectory('store-mismatch');
+    const zipPath = path.join(directory, 'mismatch.zip');
+    await writeZipArchive(zipPath, [
+      {
+        name: 'hello.txt',
+        data: Buffer.from('hello'),
+        declaredUncompressedSize: 10,
+      },
+    ]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(reader.openEntryStream(reader.entries[0]!)).rejects.toThrow(
+        /compressed size does not match uncompressed size/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+});
