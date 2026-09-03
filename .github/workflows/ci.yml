@@ -123,3 +123,25 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets[matrix.secret] }}
         run: npm publish --access public --registry ${{ matrix.registry }}
+
+  release:
+    name: GitHub Tag and Release
+    needs: publish
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && inputs.dry_run == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          gh release create "v${version}" \
+            --title "v${version}" \
+            --generate-notes \
+            --target "${GITHUB_SHA}"
