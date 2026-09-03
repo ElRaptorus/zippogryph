@@ -71,6 +71,7 @@ npx zippogryph --silent foo.zip /path/to/target/dir
 - Compression methods `0` (STORE) and `8` (DEFLATE) are supported. May add more in the future.
 - The central directory is currently capped at 64 MiB
 - DEFLATE output is capped to the declared uncompressed size
+- CRC-32 check is always on
 
 ## License
 

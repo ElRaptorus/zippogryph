@@ -22,6 +22,7 @@ export interface ZipBuilderEntry {
   externalFileAttributes?: number;
   versionMadeBy?: number;
   declaredUncompressedSize?: number;
+  crc32?: number;
 }
 
 export const UNIX_FILE_ATTRIBUTES = (0o100644 << 16) >>> 0;
@@ -38,7 +39,7 @@ export async function writeZipArchive(destinationPath: string, files: ZipBuilder
     const uncompressed = file.data;
     const method = file.method ?? 0;
     const compressed = method === 8 ? deflateRawSync(uncompressed) : uncompressed;
-    const checksum = crc32(uncompressed) >>> 0;
+    const checksum = file.crc32 === undefined ? crc32(uncompressed) >>> 0 : file.crc32 >>> 0;
     const uncompressedSize = file.declaredUncompressedSize ?? uncompressed.length;
     const flags = file.utf8 ? 0x0800 : 0;
     const nameBuffer = Buffer.from(file.name, file.utf8 ? 'utf8' : 'latin1');

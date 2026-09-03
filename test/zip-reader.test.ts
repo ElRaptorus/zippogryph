@@ -119,6 +119,28 @@ describe('inflate output cap', () => {
     }
   });
 
+  it('rejects DEFLATE output when the header claims uncompressed size 0', async () => {
+    const directory = await makeTemporaryDirectory('inflate-zero');
+    const zipPath = path.join(directory, 'zero.zip');
+    await writeZipArchive(zipPath, [
+      {
+        name: 'payload.bin',
+        data: Buffer.alloc(32, 0x61),
+        method: 8,
+        declaredUncompressedSize: 0,
+      },
+    ]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(readStreamBuffer(await reader.openEntryStream(reader.entries[0]!))).rejects.toThrow(
+        /Inflated output exceeds declared uncompressed size/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+
   it('rejects a STORE entry whose compressed size does not match uncompressed size', async () => {
     const directory = await makeTemporaryDirectory('store-mismatch');
     const zipPath = path.join(directory, 'mismatch.zip');
@@ -134,6 +156,74 @@ describe('inflate output cap', () => {
     try {
       await expect(reader.openEntryStream(reader.entries[0]!)).rejects.toThrow(
         /compressed size does not match uncompressed size/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+});
+
+describe('CRC-32 verification', () => {
+  it('reads an empty STORE entry with CRC 0', async () => {
+    const directory = await makeTemporaryDirectory('crc-empty');
+    const zipPath = path.join(directory, 'empty.zip');
+    await writeZipArchive(zipPath, [{ name: 'empty.txt', data: Buffer.alloc(0) }]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      const contents = await readStreamBuffer(await reader.openEntryStream(reader.entries[0]!));
+      expect(contents.equals(Buffer.alloc(0))).toBe(true);
+    } finally {
+      await reader.close();
+    }
+  });
+
+  it('rejects a non-empty STORE entry whose header CRC is 0', async () => {
+    const directory = await makeTemporaryDirectory('crc-zero-lie');
+    const zipPath = path.join(directory, 'crc0.zip');
+    await writeZipArchive(zipPath, [{ name: 'hello.txt', data: Buffer.from('hello'), crc32: 0 }]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(readStreamBuffer(await reader.openEntryStream(reader.entries[0]!))).rejects.toThrow(
+        /CRC-32 mismatch/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+
+  it('rejects a DEFLATE entry whose output is shorter than the declared uncompressed size', async () => {
+    const directory = await makeTemporaryDirectory('size-short');
+    const zipPath = path.join(directory, 'short.zip');
+    await writeZipArchive(zipPath, [
+      {
+        name: 'hello.txt',
+        data: Buffer.from('hello'),
+        method: 8,
+        declaredUncompressedSize: 50,
+      },
+    ]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(readStreamBuffer(await reader.openEntryStream(reader.entries[0]!))).rejects.toThrow(
+        /Uncompressed size mismatch: expected 50 bytes, got 5/,
+      );
+    } finally {
+      await reader.close();
+    }
+  });
+
+  it('rejects a STORE entry with a wrong non-zero CRC', async () => {
+    const directory = await makeTemporaryDirectory('crc-wrong');
+    const zipPath = path.join(directory, 'wrong.zip');
+    await writeZipArchive(zipPath, [{ name: 'hello.txt', data: Buffer.from('hello'), crc32: 0xdeadbeef }]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      await expect(readStreamBuffer(await reader.openEntryStream(reader.entries[0]!))).rejects.toThrow(
+        /CRC-32 mismatch/,
       );
     } finally {
       await reader.close();

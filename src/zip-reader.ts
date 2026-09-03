@@ -110,26 +110,37 @@ function capInflateOutput(inflate: Readable, maxOutputLength: number, fileName: 
     if (exceeded) {
       return;
     }
-    capped.destroy(error);
+    if (!capped.destroyed) {
+      capped.destroy(error);
+    }
+  });
+  capped.on('error', () => {
+    if (!inflate.destroyed) {
+      inflate.destroy();
+    }
   });
   inflate.pipe(capped);
   return capped;
 }
 
-function wrapCrc32(stream: Readable, expectedCrc32: number): Readable {
-  if (expectedCrc32 === 0) {
-    return stream;
-  }
-
+function wrapCrc32(stream: Readable, expectedCrc32: number, expectedLength: number): Readable {
   let crc = 0;
+  let byteCount = 0;
   const checker = new Transform({
     transform(chunk, _encoding, callback) {
+      byteCount += chunk.length;
       crc = zlib.crc32(chunk, crc);
       callback(null, chunk);
     },
     flush(callback) {
+      if (byteCount !== expectedLength) {
+        callback(
+          new Error(`Uncompressed size mismatch: expected ${String(expectedLength)} bytes, got ${String(byteCount)}`),
+        );
+        return;
+      }
       if (crc !== expectedCrc32) {
-        callback(new Error(`CRC-32 mismatch: expected ${expectedCrc32}, got ${crc}`));
+        callback(new Error(`CRC-32 mismatch: expected ${String(expectedCrc32)}, got ${String(crc)}`));
         return;
       }
       callback();
@@ -137,7 +148,14 @@ function wrapCrc32(stream: Readable, expectedCrc32: number): Readable {
   });
 
   stream.on('error', (error) => {
-    checker.destroy(error);
+    if (!checker.destroyed) {
+      checker.destroy(error);
+    }
+  });
+  checker.on('error', () => {
+    if (!stream.destroyed) {
+      stream.destroy();
+    }
   });
   stream.pipe(checker);
   return checker;
@@ -365,18 +383,18 @@ export class ZipReader {
         throw new Error(`STORE entry '${entry.fileName}' compressed size does not match uncompressed size`);
       }
       if (entry.compressedSize === 0) {
-        return wrapCrc32(Readable.from(Buffer.alloc(0)), entry.crc32);
+        return wrapCrc32(Readable.from(Buffer.alloc(0)), entry.crc32, entry.uncompressedSize);
       }
       const stored = createReadStream(this.zipPath, {
         start: dataStart,
         end: dataStart + entry.compressedSize - 1,
       });
-      return wrapCrc32(stored, entry.crc32);
+      return wrapCrc32(stored, entry.crc32, entry.uncompressedSize);
     }
 
     if (entry.compressionMethod === METHOD_DEFLATE) {
       if (entry.compressedSize === 0) {
-        return wrapCrc32(Readable.from(Buffer.alloc(0)), entry.crc32);
+        return wrapCrc32(Readable.from(Buffer.alloc(0)), entry.crc32, entry.uncompressedSize);
       }
       const compressed = createReadStream(this.zipPath, {
         start: dataStart,
@@ -388,7 +406,11 @@ export class ZipReader {
         inflate.destroy(error);
       });
       compressed.pipe(inflate);
-      return wrapCrc32(capInflateOutput(inflate, entry.uncompressedSize, entry.fileName), entry.crc32);
+      return wrapCrc32(
+        capInflateOutput(inflate, entry.uncompressedSize, entry.fileName),
+        entry.crc32,
+        entry.uncompressedSize,
+      );
     }
 
     throw new Error(`Unsupported compression method ${entry.compressionMethod} for entry '${entry.fileName}'`);

@@ -196,6 +196,13 @@ describe('extract', () => {
     await expect(extract(fixturePath('broken.zip'), { dir: directoryPath })).rejects.toThrow();
   });
 
+  it('rejects a zip whose header CRC is 0 but the payload is not', async () => {
+    const directoryPath = await makeTemporaryDirectory('crc-zero-extract');
+    const zipPath = path.join(directoryPath, 'crc0.zip');
+    await writeZipArchive(zipPath, [{ name: 'hello.txt', data: Buffer.from('hello'), crc32: 0 }]);
+    await expect(extract(zipPath, { dir: directoryPath })).rejects.toThrow(/CRC-32 mismatch/);
+  });
+
   it('extracts via the CLI', async () => {
     const directoryPath = await makeTemporaryDirectory('cli');
     const cliPath = path.join(repositoryRoot, 'dist', 'cli.js');
