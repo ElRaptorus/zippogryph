@@ -8,15 +8,17 @@ Requires Node.js `>=22.12.0`.
 
 ## Why
 
-`extract-zip` has not been maintained for years and is affected by [CVE-2026-19693](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3). \
+`extract-zip` has not been maintained for years and has security issues like [CVE-2026-19693](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3). \
 Got bored and thought a rewrite is more exciting than another fork.
-Who knows, maybe somebody will find this even useful.
+Who knows, maybe somebody will even find this useful.
 
 ## Usage
 
 ```bash
 npm install @elraptorus/zippogryph
 ```
+
+The lib is available on `NPM` and via `GitHub Package` registry. Use whichever you prefer.
 
 > You could also create an override in your package.json to have extract-zip point here instead, but beware: **Danger, Will Robinson.**.
 
