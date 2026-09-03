@@ -23,6 +23,8 @@ const MAX_COMMENT_LENGTH = 65535;
 const END_OF_CENTRAL_DIRECTORY_MINIMUM_SIZE = 22;
 const ZIP64_LOCATOR_SIZE = 20;
 
+export const MAX_CENTRAL_DIRECTORY_SIZE = 64 * 1024 * 1024;
+
 async function readExact(fileHandle: FileHandle, position: number, length: number): Promise<Buffer> {
   const buffer = Buffer.alloc(length);
   let offset = 0;
@@ -116,6 +118,23 @@ interface EndOfCentralDirectory {
   entryCount: number;
   centralDirectoryOffset: number;
   centralDirectorySize: number;
+}
+
+function assertSafeNonNegativeInteger(value: number, fieldName: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Invalid ${fieldName}: ${String(value)}`);
+  }
+}
+
+function assertCentralDirectoryWithinCap(endOfCentralDirectory: EndOfCentralDirectory): void {
+  assertSafeNonNegativeInteger(endOfCentralDirectory.centralDirectorySize, 'central directory size');
+  assertSafeNonNegativeInteger(endOfCentralDirectory.centralDirectoryOffset, 'central directory offset');
+  assertSafeNonNegativeInteger(endOfCentralDirectory.entryCount, 'central directory entry count');
+  if (endOfCentralDirectory.centralDirectorySize > MAX_CENTRAL_DIRECTORY_SIZE) {
+    throw new Error(
+      `Central directory is too large (${String(endOfCentralDirectory.centralDirectorySize)} bytes; maximum is ${String(MAX_CENTRAL_DIRECTORY_SIZE)})`,
+    );
+  }
 }
 
 async function findEndOfCentralDirectory(fileHandle: FileHandle, fileSize: number): Promise<EndOfCentralDirectory> {
@@ -266,6 +285,7 @@ export class ZipReader {
     try {
       const stats = await fileHandle.stat();
       const eocd = await findEndOfCentralDirectory(fileHandle, stats.size);
+      assertCentralDirectoryWithinCap(eocd);
       const centralDirectory = await readExact(fileHandle, eocd.centralDirectoryOffset, eocd.centralDirectorySize);
       const entries = parseCentralDirectory(centralDirectory);
       return new ZipReader(zipPath, fileHandle, entries);

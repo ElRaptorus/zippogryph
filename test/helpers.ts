@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,4 +81,25 @@ export async function writeZipArchive(destinationPath: string, files: ZipBuilder
   endOfCentralDirectory.writeUInt32LE(offset, 16);
 
   await writeFile(destinationPath, Buffer.concat([...localParts, centralDirectory, endOfCentralDirectory]));
+}
+
+const ZIP32_END_OF_CENTRAL_DIRECTORY_SIZE = 22;
+const ZIP32_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+
+export async function patchZip32CentralDirectorySize(zipPath: string, centralDirectorySize: number): Promise<void> {
+  const archive = await readFile(zipPath);
+  if (archive.length < ZIP32_END_OF_CENTRAL_DIRECTORY_SIZE) {
+    throw new Error('File is too small to contain a ZIP32 end of central directory record');
+  }
+
+  const endOfCentralDirectoryStart = archive.length - ZIP32_END_OF_CENTRAL_DIRECTORY_SIZE;
+  const signature = archive.readUInt32LE(endOfCentralDirectoryStart);
+  if (signature !== ZIP32_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+    throw new Error(
+      `Expected a comment-free ZIP32 end of central directory at end of file, got signature 0x${signature.toString(16)}`,
+    );
+  }
+
+  archive.writeUInt32LE(centralDirectorySize, endOfCentralDirectoryStart + 12);
+  await writeFile(zipPath, archive);
 }

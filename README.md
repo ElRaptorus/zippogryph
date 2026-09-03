@@ -22,17 +22,13 @@ The lib is available on `NPM` and via `GitHub Package` registry. Use whichever y
 
 > You could also create an override in your package.json to have extract-zip point here instead, but beware: **Danger, Will Robinson.**.
 
-### ESM:
+You can import and use it like this:
 
 ```javascript
+// ESM
 import extract from '@elraptorus/zippogryph';
 
-await extract('/absolute/path/to/file.zip', { dir: '/absolute/path/to/dest' });
-```
-
-### CommonJS:
-
-```javascript
+// CommonJS
 const extract = require('@elraptorus/zippogryph');
 
 await extract('/absolute/path/to/file.zip', { dir: '/absolute/path/to/dest' });
@@ -69,7 +65,7 @@ npx zippogryph --silent foo.zip /path/to/target/dir
 | `strip`           | `number`                   | `0`      | Number of leading path components to remove from each entry                                                                                                                                                    |
 | `noOverwrite`     | `boolean`                  | `false`  | Skip files and symlinks that already exist at the destination                                                                                                                                                  |
 
-Entries under `__MACOSX/` are skipped. Compression methods `0` (STORE) and `8` (DEFLATE) are supported. Encrypted or other methods throw.
+Entries under `__MACOSX/` are skipped. Compression methods `0` (STORE) and `8` (DEFLATE) are supported. Encrypted or other methods throw. The central directory is capped at 64 MiB.
 
 ## License
 

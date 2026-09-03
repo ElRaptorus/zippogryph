@@ -3,8 +3,8 @@ import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
-import { openZipFile } from '../src/zip-reader.js';
-import { makeTemporaryDirectory, writeZipArchive } from './helpers.js';
+import { MAX_CENTRAL_DIRECTORY_SIZE, openZipFile } from '../src/zip-reader.js';
+import { makeTemporaryDirectory, patchZip32CentralDirectorySize, writeZipArchive } from './helpers.js';
 
 describe('zip reader', () => {
   it('extracts a STORE entry', async () => {
@@ -69,5 +69,29 @@ describe('zip reader', () => {
     } finally {
       await reader.close();
     }
+  });
+});
+
+describe('central directory size cap', () => {
+  it('opens a zip whose central directory is within the cap', async () => {
+    const directory = await makeTemporaryDirectory('cd-cap-ok');
+    const zipPath = path.join(directory, 'ok.zip');
+    await writeZipArchive(zipPath, [{ name: 'hello.txt', data: Buffer.from('hello') }]);
+
+    const reader = await openZipFile(zipPath);
+    try {
+      expect(reader.entries.map((entry) => entry.fileName)).toEqual(['hello.txt']);
+    } finally {
+      await reader.close();
+    }
+  });
+
+  it('rejects a zip whose end of central directory claims a too-large central directory', async () => {
+    const directory = await makeTemporaryDirectory('cd-cap-over');
+    const zipPath = path.join(directory, 'oversize-cd.zip');
+    await writeZipArchive(zipPath, [{ name: 'hello.txt', data: Buffer.from('hello') }]);
+    await patchZip32CentralDirectorySize(zipPath, MAX_CENTRAL_DIRECTORY_SIZE + 1);
+
+    await expect(openZipFile(zipPath)).rejects.toThrow(/Central directory is too large/);
   });
 });
